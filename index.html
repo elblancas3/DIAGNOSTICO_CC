@@ -481,23 +481,6 @@ html,body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif
 <!-- ══ TAB CONFIG ══ -->
 <div class="view" id="view-config">
   <div class="section-card">
-    <div class="section-header"><span class="section-icon">🔗</span><span class="section-title">Conexión Google Sheets</span></div>
-    <div class="section-body">
-      <div class="field-group">
-        <label class="field-label">URL Apps Script (Web App)</label>
-        <input type="url" class="field-input" id="cfg_scriptUrl" placeholder="https://script.google.com/macros/s/.../exec" onchange="saveConfig()">
-      </div>
-      <div class="sheet-url-note">
-        <strong>⚙️ Cómo configurar — Etapa 2</strong>
-        1. Abre el Apps Script del Sheet de destino<br>
-        2. Despliega como Web App (acceso: Cualquier persona)<br>
-        3. Copia la URL y pégala aquí<br>
-        4. Los datos se envían como POST JSON con todos los campos
-      </div>
-      <button class="btn-gps" style="width:100%;justify-content:center;margin-top:8px" onclick="testConnection()">🧪 Probar conexión</button>
-    </div>
-  </div>
-  <div class="section-card">
     <div class="section-header"><span class="section-icon">📊</span><span class="section-title">Estadísticas</span></div>
     <div class="config-row"><span class="config-label">Total centros cargados</span><span class="config-val">49</span></div>
     <div class="config-row"><span class="config-label">Total registros</span><span class="config-val" id="stat-total">0</span></div>
@@ -586,10 +569,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const now = new Date();
   document.getElementById('f_fecha').value = now.toISOString().split('T')[0];
   document.getElementById('f_hora').value = now.toTimeString().slice(0,5);
-  // Pre-cargar URL fija si no hay una guardada
-  if(!config.scriptUrl) config.scriptUrl = APPS_SCRIPT_URL;
-  config.scriptUrl = config.scriptUrl || APPS_SCRIPT_URL;
-  document.getElementById('cfg_scriptUrl').value = config.scriptUrl;
+  // URL fija — no necesita configuración manual
+  config.scriptUrl = APPS_SCRIPT_URL;
   saveConfig();
   updateSyncBadge(); updateQueueBadge(); updateStats();
   renderAllItems('');
@@ -867,26 +848,47 @@ function resetForm(){
 }
 
 // ══ SYNC ══
-// Mismo patrón que APP_CAMPO:
-//   body = JSON.stringify({ registros: [...] })
-//   Content-Type: text/plain  →  Apps Script lee e.postData.contents
 async function syncRecord(record){
   const url = config.scriptUrl || APPS_SCRIPT_URL;
   if(!url) return;
-  try{
-    await fetch(url, {
+
+  const body = JSON.stringify({ registros: [record.data] });
+
+  try {
+    // Intento 1: fetch normal — lee la respuesta real de Apps Script
+    const res  = await fetch(url, {
       method : 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body   : JSON.stringify({ registros: [record.data] }),
-      mode   : 'no-cors'
+      body   : body,
+      redirect: 'follow'
     });
-    // no-cors → respuesta opaca; si no lanzó excepción el request llegó
-    record.status    = 'synced';
-    record.syncedAt  = new Date().toISOString();
-  } catch(e) {
-    record.status = 'error';
-    record.error  = e.message;
-    console.error('[CC Sync] Error:', e);
+    const json = await res.json();
+    if(json.ok){
+      record.status   = 'synced';
+      record.syncedAt = new Date().toISOString();
+    } else {
+      record.status = 'error';
+      record.error  = json.error || 'Apps Script devolvió ok:false';
+    }
+  } catch(corsErr) {
+    // Intento 2: no-cors (fire & forget) si el navegador bloquea CORS
+    console.warn('[CC Sync] CORS bloqueado, reintentando con no-cors:', corsErr.message);
+    try {
+      await fetch(url, {
+        method : 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body   : body,
+        mode   : 'no-cors',
+        redirect: 'follow'
+      });
+      // Con no-cors no podemos leer respuesta; asumimos enviado
+      record.status   = 'synced';
+      record.syncedAt = new Date().toISOString();
+    } catch(e2) {
+      record.status = 'error';
+      record.error  = e2.message;
+      console.error('[CC Sync] Error final:', e2);
+    }
   }
   saveQueue(); updateSyncBadge(); updateQueueBadge(); renderQueue();
 }
@@ -904,7 +906,7 @@ async function syncPending(){
     if(r.status==='synced') ok++; else fail++;
   }
   if(fail===0) showToast('success',`✅ ${ok} registro${ok>1?'s':''} en el Sheet`);
-  else          showToast('error', `⚠️ ${ok} enviados · ${fail} con error`);
+  else          showToast('error', `⚠️ ${ok} enviados · ${fail} con error — abre F12 Console`);
   updateStats();
 }
 
@@ -928,7 +930,7 @@ function renderQueue(){
 
 // ══ UTILS ══
 function saveQueue(){ localStorage.setItem('cc_queue',JSON.stringify(queue)); }
-function saveConfig(){ config.scriptUrl=document.getElementById('cfg_scriptUrl')?.value||config.scriptUrl; localStorage.setItem('cc_config',JSON.stringify(config)); }
+function saveConfig(){ localStorage.setItem('cc_config',JSON.stringify(config)); }
 function updateSyncBadge(){
   const pending=queue.filter(r=>r.status==='pending').length;
   const badge=document.getElementById('syncBadge');
@@ -961,12 +963,6 @@ function clearAll(){
   if(!confirm('¿Borrar TODOS los registros locales?')) return;
   queue=[]; saveQueue(); updateQueueBadge(); updateStats(); renderQueue();
   showToast('info','🗑 Registros borrados');
-}
-async function testConnection(){
-  const url=document.getElementById('cfg_scriptUrl').value;
-  if(!url){ showToast('error','⚠️ Ingresa la URL del Apps Script'); return; }
-  try{ await fetch(url,{method:'GET',mode:'no-cors'}); showToast('success','✅ URL accesible'); }
-  catch(e){ showToast('error','❌ No se pudo conectar'); }
 }
 function showToast(type, msg, duration=3500){
   const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg;
