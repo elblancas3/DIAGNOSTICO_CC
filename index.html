@@ -473,7 +473,10 @@ html,body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif
 <div class="view" id="view-queue">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700">Registros</div>
-    <button class="btn-gps" onclick="syncPending()" style="font-size:11px">🔄 Sincronizar todo</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn-gps" onclick="forzarResync()" style="font-size:11px">↩ Re-enviar todos</button>
+      <button class="btn-gps" onclick="syncPending()" style="font-size:11px">🔄 Sincronizar</button>
+    </div>
   </div>
   <div id="queueList"></div>
 </div>
@@ -847,66 +850,79 @@ function resetForm(){
   window.scrollTo(0,0);
 }
 
-// ══ SYNC ══
-async function syncRecord(record){
-  const url = config.scriptUrl || APPS_SCRIPT_URL;
-  if(!url) return;
+// ══ SYNC — form POST via iframe (sin CORS, sin redirect issues) ══
+// Un <form> POST sobrevive el redirect de Apps Script y llega
+// como e.parameter.payload. No hay preflight, no hay CORS.
 
-  const body = JSON.stringify({ registros: [record.data] });
+function syncViaForm(payload) {
+  return new Promise(resolve => {
+    const iframeId = 'cc_sync_iframe';
+    let iframe = document.getElementById(iframeId);
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = iframeId;
+      iframe.name = iframeId;
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+    }
 
+    const form = document.createElement('form');
+    form.method  = 'POST';
+    form.action  = APPS_SCRIPT_URL;
+    form.target  = iframeId;
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type  = 'hidden';
+    input.name  = 'payload';
+    input.value = payload;
+    form.appendChild(input);
+    document.body.appendChild(form);
+
+    // onload dispara cuando Apps Script responde (aunque no podamos leer el contenido)
+    const timeout = setTimeout(() => { cleanup(); resolve('timeout'); }, 10000);
+
+    iframe.onload = () => { clearTimeout(timeout); cleanup(); resolve('ok'); };
+
+    form.submit();
+
+    function cleanup() {
+      iframe.onload = null;
+      if (form.parentNode) document.body.removeChild(form);
+    }
+  });
+}
+
+async function syncRecord(record) {
   try {
-    // Intento 1: fetch normal — lee la respuesta real de Apps Script
-    const res  = await fetch(url, {
-      method : 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body   : body,
-      redirect: 'follow'
-    });
-    const json = await res.json();
-    if(json.ok){
-      record.status   = 'synced';
-      record.syncedAt = new Date().toISOString();
-    } else {
-      record.status = 'error';
-      record.error  = json.error || 'Apps Script devolvió ok:false';
-    }
-  } catch(corsErr) {
-    // Intento 2: no-cors (fire & forget) si el navegador bloquea CORS
-    console.warn('[CC Sync] CORS bloqueado, reintentando con no-cors:', corsErr.message);
-    try {
-      await fetch(url, {
-        method : 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body   : body,
-        mode   : 'no-cors',
-        redirect: 'follow'
-      });
-      // Con no-cors no podemos leer respuesta; asumimos enviado
-      record.status   = 'synced';
-      record.syncedAt = new Date().toISOString();
-    } catch(e2) {
-      record.status = 'error';
-      record.error  = e2.message;
-      console.error('[CC Sync] Error final:', e2);
-    }
+    const payload = JSON.stringify({ registros: [record.data] });
+    const result  = await syncViaForm(payload);
+    record.status    = 'synced';
+    record.syncedAt  = new Date().toISOString();
+    record.syncMethod = result; // 'ok' o 'timeout'
+  } catch(e) {
+    record.status = 'error';
+    record.error  = e.message;
   }
   saveQueue(); updateSyncBadge(); updateQueueBadge(); renderQueue();
 }
 
-async function syncPending(){
-  if(!isOnline){ showToast('error','📵 Sin conexión a internet'); return; }
-  const url = config.scriptUrl || APPS_SCRIPT_URL;
-  if(!url){ showToast('error','⚙️ Sin URL de Apps Script'); return; }
-  const pending = queue.filter(r => r.status==='pending' || r.status==='error');
-  if(!pending.length){ showToast('info','✅ Todo ya está sincronizado'); return; }
-  showToast('info',`🔄 Enviando ${pending.length} registro${pending.length>1?'s':''} al Sheet...`);
-  let ok=0, fail=0;
-  for(const r of pending){
-    await syncRecord(r);
-    if(r.status==='synced') ok++; else fail++;
-  }
-  if(fail===0) showToast('success',`✅ ${ok} registro${ok>1?'s':''} en el Sheet`);
-  else          showToast('error', `⚠️ ${ok} enviados · ${fail} con error — abre F12 Console`);
+async function syncPending() {
+  if (!isOnline) { showToast('error','📵 Sin conexión a internet'); return; }
+  // Marcar como pendiente los que nunca llegaron (por si estaban mal marcados)
+  queue.filter(r => r.status === 'error').forEach(r => r.status = 'pending');
+  saveQueue();
+
+  const pending = queue.filter(r => r.status === 'pending');
+  if (!pending.length) { showToast('info','✅ Todo ya está sincronizado'); return; }
+
+  showToast('info', `🔄 Enviando ${pending.length} registro${pending.length>1?'s':''}...`);
+  for (const r of pending) await syncRecord(r);
+
+  const ok   = queue.filter(r => r.status === 'synced').length;
+  const fail = queue.filter(r => r.status === 'error').length;
+  if (!fail) showToast('success', `✅ ${ok} registro${ok>1?'s':''} en el Sheet`);
+  else       showToast('error',   `⚠️ ${ok} OK · ${fail} con error`);
   updateStats();
 }
 
@@ -930,6 +946,12 @@ function renderQueue(){
 
 // ══ UTILS ══
 function saveQueue(){ localStorage.setItem('cc_queue',JSON.stringify(queue)); }
+function forzarResync() {
+  queue.forEach(r => r.status = 'pending');
+  saveQueue(); updateQueueBadge(); renderQueue(); updateStats();
+  showToast('info', `↩ ${queue.length} registros marcados para re-envío`);
+  setTimeout(syncPending, 500);
+}
 function saveConfig(){ localStorage.setItem('cc_config',JSON.stringify(config)); }
 function updateSyncBadge(){
   const pending=queue.filter(r=>r.status==='pending').length;
