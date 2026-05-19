@@ -579,7 +579,7 @@ let selectedCC = null;
 let listOpen = false;
 
 // ══ URL FIJA DEL APPS SCRIPT ══
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5b9Txc9CRVKToM0_hMC21fZpBQXPHlHKg0lf33L_GCdgKXV1XoO6XYu6zupfXuAv5/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxyms4gQQTVfoKusMYsNZdXASW_q4BxIwscKihlj29u9RkV__4e8-f9AmckWkzJC3xC/exec';
 
 // ══ INIT ══
 document.addEventListener('DOMContentLoaded', ()=>{
@@ -867,42 +867,44 @@ function resetForm(){
 }
 
 // ══ SYNC ══
+// Mismo patrón que APP_CAMPO:
+//   body = JSON.stringify({ registros: [...] })
+//   Content-Type: text/plain  →  Apps Script lee e.postData.contents
 async function syncRecord(record){
   const url = config.scriptUrl || APPS_SCRIPT_URL;
   if(!url) return;
   try{
-    // Apps Script + no-cors requiere Content-Type: text/plain
-    // El body va como JSON string y doPost lo parsea con e.postData.contents
     await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(record.data),
-      mode: 'no-cors'
+      method : 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body   : JSON.stringify({ registros: [record.data] }),
+      mode   : 'no-cors'
     });
-    // Con no-cors no podemos leer la respuesta, pero si no lanzó error = enviado
-    record.status = 'synced';
-    record.syncedAt = new Date().toISOString();
+    // no-cors → respuesta opaca; si no lanzó excepción el request llegó
+    record.status    = 'synced';
+    record.syncedAt  = new Date().toISOString();
   } catch(e) {
     record.status = 'error';
-    record.error = e.message;
-    console.error('Sync error:', e);
+    record.error  = e.message;
+    console.error('[CC Sync] Error:', e);
   }
   saveQueue(); updateSyncBadge(); updateQueueBadge(); renderQueue();
 }
+
 async function syncPending(){
   if(!isOnline){ showToast('error','📵 Sin conexión a internet'); return; }
   const url = config.scriptUrl || APPS_SCRIPT_URL;
-  if(!url){ showToast('error','⚙️ No hay URL de Apps Script configurada'); return; }
-  const pending = queue.filter(r=>r.status==='pending'||r.status==='error');
-  if(!pending.length){ showToast('info','✅ Todo sincronizado'); return; }
+  if(!url){ showToast('error','⚙️ Sin URL de Apps Script'); return; }
+  const pending = queue.filter(r => r.status==='pending' || r.status==='error');
+  if(!pending.length){ showToast('info','✅ Todo ya está sincronizado'); return; }
   showToast('info',`🔄 Enviando ${pending.length} registro${pending.length>1?'s':''} al Sheet...`);
   let ok=0, fail=0;
   for(const r of pending){
     await syncRecord(r);
     if(r.status==='synced') ok++; else fail++;
   }
-  if(fail===0) showToast('success',`✅ ${ok} registro${ok>1?'s':''} enviado${ok>1?'s':''} al Sheet`);
-  else showToast('error',`⚠️ ${ok} OK · ${fail} con error — revisa la consola`);
+  if(fail===0) showToast('success',`✅ ${ok} registro${ok>1?'s':''} en el Sheet`);
+  else          showToast('error', `⚠️ ${ok} enviados · ${fail} con error`);
   updateStats();
 }
 
