@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tablero CC · Centros Comunitarios NL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#1a1a2e;--surface:#22223a;--surface2:#2a2a45;--border:#35355a;
+  --accent:#f15a00;--accent2:#ff7a20;--glow:rgba(241,90,0,.2);
+  --text:#e8e8f0;--muted:#9090b8;--dim:#55557a;
+  --red:#ff4444;--yellow:#ffb020;--green:#4cca80;--blue:#5ab4ff;
+  --r:10px;--rs:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;font-size:13px;min-height:100vh;}
+
+/* ── HEADER ── */
+.hdr{background:var(--accent);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:500;box-shadow:0 2px 20px rgba(241,90,0,.5);}
+.hdr-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;letter-spacing:.06em;text-transform:uppercase;color:#fff;}
+.hdr-title span{opacity:.6;font-weight:300;}
+.hdr-right{display:flex;align-items:center;gap:10px;}
+.hdr-update{font-family:'Barlow Condensed',sans-serif;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.04em;}
+.btn-refresh{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.3);border-radius:var(--rs);color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:6px 14px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s;}
+.btn-refresh:hover{background:rgba(0,0,0,.4);}
+.btn-refresh.loading{opacity:.6;pointer-events:none;}
+
+/* ── FILTERS ── */
+.filters{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.filter-label{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);}
+.pills{display:flex;gap:5px;flex-wrap:wrap;}
+.pill{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;transition:all .18s;}
+.pill.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.pill:hover:not(.active){border-color:var(--muted);}
+.filter-sep{width:1px;height:20px;background:var(--border);}
+.filter-select{background:var(--bg);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:12px;padding:5px 10px;cursor:pointer;}
+.filter-select option{background:var(--surface2);}
+
+/* ── LAYOUT ── */
+.wrap{max-width:1400px;margin:0 auto;padding:16px 20px 40px;}
+
+/* ── KPI CARDS ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .2s;}
+.kpi:hover{border-color:var(--accent);}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.kpi.orange::before{background:var(--accent);}
+.kpi.red::before{background:var(--red);}
+.kpi.yellow::before{background:var(--yellow);}
+.kpi.green::before{background:var(--green);}
+.kpi.blue::before{background:var(--blue);}
+.kpi-label{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px;}
+.kpi-val{font-family:'Barlow Condensed',sans-serif;font-size:32px;font-weight:800;line-height:1;color:var(--text);}
+.kpi-val.orange{color:var(--accent2);}
+.kpi-val.red{color:var(--red);}
+.kpi-val.yellow{color:var(--yellow);}
+.kpi-val.green{color:var(--green);}
+.kpi-val.blue{color:var(--blue);}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;font-family:'Barlow Condensed',sans-serif;}
+
+/* ── MAIN GRID ── */
+.main-grid{display:grid;grid-template-columns:1fr 340px;gap:12px;margin-bottom:12px;}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent2);}
+.card-body{padding:14px;}
+.card-body.np{padding:0;}
+
+/* ── MAP ── */
+#map{height:420px;width:100%;background:#1a1a2e;}
+.leaflet-container{background:#1a1a2e !important;}
+.leaflet-popup-content-wrapper{background:#22223a;border:1px solid #35355a;color:#e8e8f0;box-shadow:0 4px 20px rgba(0,0,0,.6);}
+.leaflet-popup-tip{background:#22223a;}
+.leaflet-popup-close-button{color:#9090b8 !important;}
+
+/* ── LEGEND ── */
+.map-legend{display:flex;gap:10px;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap;}
+.leg-item{display:flex;align-items:center;gap:5px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:600;color:var(--muted);}
+.leg-dot{width:10px;height:10px;border-radius:50%;}
+
+/* ── CHART WRAPPERS ── */
+.chart-wrap{position:relative;height:200px;display:flex;align-items:center;justify-content:center;}
+.chart-wrap canvas{max-height:200px;}
+
+/* ── TABLE ── */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{background:var(--surface2);padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;position:sticky;top:0;}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
+tbody tr:hover{background:var(--surface2);}
+tbody td{padding:8px 12px;color:var(--text);white-space:nowrap;font-family:'Barlow Condensed',sans-serif;font-size:12px;}
+.badge{display:inline-block;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:3px;text-transform:uppercase;}
+.b-p1{background:rgba(255,68,68,.15);color:var(--red);}
+.b-p2{background:rgba(255,176,32,.15);color:var(--yellow);}
+.b-p3{background:rgba(76,202,128,.15);color:var(--green);}
+.b-b{background:rgba(76,202,128,.12);color:var(--green);}
+.b-r{background:rgba(255,176,32,.12);color:var(--yellow);}
+.b-m{background:rgba(255,68,68,.12);color:var(--red);}
+.b-na{background:rgba(255,255,255,.06);color:var(--muted);}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:60px 20px;color:var(--dim);font-family:'Barlow Condensed',sans-serif;}
+.empty .ei{font-size:40px;margin-bottom:10px;}
+.empty p{font-size:15px;font-weight:600;letter-spacing:.04em;}
+.empty small{font-size:12px;color:var(--border);display:block;margin-top:6px;}
+
+/* ── REGION BADGE ── */
+.reg-met{background:rgba(90,180,255,.12);color:var(--blue);}
+.reg-per{background:rgba(255,176,32,.12);color:var(--yellow);}
+.reg-nor{background:rgba(76,202,128,.12);color:var(--green);}
+.reg-sur{background:rgba(255,68,68,.12);color:var(--red);}
+.reg-ori{background:rgba(200,140,255,.12);color:#c88cff;}
+.reg-cit{background:rgba(160,220,80,.12);color:#a0dc50;}
+
+/* ── LOADING ── */
+.loading-overlay{position:fixed;inset:0;background:rgba(26,12,0,.8);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px;}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-txt{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;letter-spacing:.06em;color:var(--muted);}
+
+/* ── ANÁLISIS RÁPIDO ── */
+.analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px;}
+.an-item{background:var(--bg);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;}
+.an-label{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:4px;}
+.an-val{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;color:var(--text);}
+.an-sub{font-size:11px;color:var(--muted);margin-top:2px;font-family:'Barlow Condensed',sans-serif;}
+
+/* ── PROGRESS BAR ── */
+.prog-row{display:grid;gap:8px;padding:14px;}
+.prog-item{display:grid;gap:4px;}
+.prog-label{display:flex;justify-content:space-between;font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--muted);}
+.prog-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:3px;transition:width .6s ease;}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — TABLET  (≤ 1024px)
+════════════════════════════════════════════ */
+@media(max-width:1024px){
+  .charts-grid{grid-template-columns:1fr 1fr;}
+  .kpi-grid{grid-template-columns:repeat(4,1fr);}
+}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — MÓVIL  (≤ 768px)
+   Detectado también por JS → body.is-mobile
+════════════════════════════════════════════ */
+@media(max-width:768px){
+  /* Header compacto */
+  .hdr{height:48px;padding:0 14px;}
+  .hdr-title{font-size:16px;}
+  .hdr-update{display:none;}
+  .btn-refresh{font-size:11px;padding:5px 10px;}
+
+  /* Filtros en scroll horizontal */
+  .filters{
+    padding:8px 14px;gap:8px;
+    flex-wrap:nowrap;overflow-x:auto;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  }
+  .filters::-webkit-scrollbar{display:none;}
+  .filter-sep{display:none;}
+  .filter-label{display:none;}
+  .pills{flex-wrap:nowrap;flex-shrink:0;}
+  .pill{font-size:10px;padding:4px 8px;white-space:nowrap;}
+  .filter-select{flex-shrink:0;font-size:11px;}
+
+  /* Wrap */
+  .wrap{padding:10px 12px 60px;}
+
+  /* KPIs — 2 columnas */
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+  .kpi{padding:10px 12px;}
+  .kpi-val{font-size:26px;}
+  .kpi-label{font-size:9px;}
+  .kpi-sub{font-size:10px;}
+
+  /* Grid principal — columna única */
+  .main-grid{grid-template-columns:1fr;gap:10px;}
+
+  /* Mapa más alto en móvil para usabilidad */
+  #map{height:280px;}
+
+  /* Análisis rápido — 2 col */
+  .analysis-grid{grid-template-columns:1fr 1fr;gap:6px;padding:10px;}
+  .an-val{font-size:16px;}
+
+  /* Charts — columna única */
+  .charts-grid{grid-template-columns:1fr;gap:10px;}
+  .chart-wrap{height:180px;}
+  .chart-wrap canvas{max-height:180px;}
+
+  /* Tabla — scroll horizontal */
+  .tbl-wrap{max-height:320px;}
+  table{font-size:11px;}
+  thead th{padding:7px 8px;font-size:9px;}
+  tbody td{padding:6px 8px;}
+
+  /* Cards */
+  .card-hdr{padding:10px 12px;}
+  .card-title{font-size:11px;}
+  .card-body{padding:10px;}
+
+  /* Prog bars */
+  .prog-row{padding:10px;}
+}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — MÓVIL PEQUEÑO  (≤ 380px)
+════════════════════════════════════════════ */
+@media(max-width:380px){
+  .kpi-grid{grid-template-columns:1fr 1fr;}
+  .kpi-val{font-size:22px;}
+  .hdr-title{font-size:14px;}
+  #map{height:240px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-txt">Cargando datos...</div>
+</div>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-title">CC <span>·</span> Tablero de Seguimiento <span style="font-size:13px">NL</span></div>
+  <div class="hdr-right">
+    <span class="hdr-update" id="hdrUpdate">Sin datos</span>
+    <button class="btn-refresh" id="btnRefresh" onclick="cargarDatos()">🔄 Actualizar</button>
+  </div>
+</div>
+
+<!-- FILTERS -->
+<div class="filters">
+  <span class="filter-label">Región</span>
+  <div class="pills" id="pillsRegion">
+    <button class="pill active" data-val="" onclick="setFiltro('region','',this)">Todas</button>
+    <button class="pill" data-val="METROPOLITANOS" onclick="setFiltro('region','METROPOLITANOS',this)">AMM</button>
+    <button class="pill" data-val="PERIFERIA" onclick="setFiltro('region','PERIFERIA',this)">Periferia</button>
+    <button class="pill" data-val="NORTE" onclick="setFiltro('region','NORTE',this)">Norte</button>
+    <button class="pill" data-val="SUR" onclick="setFiltro('region','SUR',this)">Sur</button>
+    <button class="pill" data-val="ORIENTE" onclick="setFiltro('region','ORIENTE',this)">Oriente</button>
+    <button class="pill" data-val="CITRICOLA" onclick="setFiltro('region','CITRICOLA',this)">Citrícola</button>
+  </div>
+  <div class="filter-sep"></div>
+  <span class="filter-label">Prioridad</span>
+  <div class="pills">
+    <button class="pill active" data-val="" onclick="setFiltro('prioridad','',this)">Todas</button>
+    <button class="pill" data-val="P1" onclick="setFiltro('prioridad','P1',this)" style="border-color:rgba(255,68,68,.3)">🔴 P1</button>
+    <button class="pill" data-val="P2" onclick="setFiltro('prioridad','P2',this)" style="border-color:rgba(255,176,32,.3)">🟡 P2</button>
+    <button class="pill" data-val="P3" onclick="setFiltro('prioridad','P3',this)" style="border-color:rgba(76,202,128,.3)">🟢 P3</button>
+  </div>
+  <div class="filter-sep"></div>
+  <span class="filter-label">Municipio</span>
+  <select class="filter-select" id="selMunicipio" onchange="setFiltro('municipio',this.value,null)">
+    <option value="">Todos</option>
+  </select>
+</div>
+
+<div class="wrap">
+
+  <!-- KPI CARDS -->
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi orange"><div class="kpi-label">CC Visitados</div><div class="kpi-val orange" id="kv-visitados">—</div><div class="kpi-sub" id="ks-visitados">de 49 centros</div></div>
+    <div class="kpi red"><div class="kpi-label">🔴 Urgentes P1</div><div class="kpi-val red" id="kv-p1">—</div><div class="kpi-sub">Atención inmediata</div></div>
+    <div class="kpi yellow"><div class="kpi-label">🟡 Moderados P2</div><div class="kpi-val yellow" id="kv-p2">—</div><div class="kpi-sub">Atención próxima</div></div>
+    <div class="kpi green"><div class="kpi-label">🟢 En Orden P3</div><div class="kpi-val green" id="kv-p3">—</div><div class="kpi-sub">Sin urgencia</div></div>
+    <div class="kpi blue"><div class="kpi-label">💻 Equip. Funcionales</div><div class="kpi-val blue" id="kv-equip">—</div><div class="kpi-sub" id="ks-equip">promedio</div></div>
+    <div class="kpi green"><div class="kpi-label">📶 Internet OK</div><div class="kpi-val green" id="kv-inet">—</div><div class="kpi-sub">Buena o Regular</div></div>
+    <div class="kpi blue"><div class="kpi-label">💧 Agua Potable</div><div class="kpi-val blue" id="kv-agua">—</div><div class="kpi-sub">de centros visitados</div></div>
+  </div>
+
+  <!-- MAP + DONUT -->
+  <div class="main-grid">
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">📍 Mapa de Centros Comunitarios</span>
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--dim)">Clic en marcador para ver detalle</span>
+      </div>
+      <div class="card-body np">
+        <div id="map"></div>
+        <div class="map-legend">
+          <div class="leg-item"><div class="leg-dot" style="background:#f15a00"></div>Sin diagnóstico</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#ff4444"></div>P1 Urgente</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#ffb020"></div>P2 Moderado</div>
+          <div class="leg-item"><div class="leg-dot" style="background:#4cca80"></div>P3 En orden</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- DONUT PRIORIDADES -->
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">🚦 Distribución Prioridades</span></div>
+        <div class="card-body" style="padding:10px">
+          <div class="chart-wrap" style="height:160px"><canvas id="chartDonut"></canvas></div>
+        </div>
+      </div>
+      <!-- ANÁLISIS RÁPIDO -->
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">⚡ Análisis Rápido</span></div>
+        <div class="analysis-grid" id="analisisGrid">
+          <div class="an-item"><div class="an-label">Equipos Malos</div><div class="an-val red" id="an-eqmalo">—</div><div class="an-sub">CC con mal estado</div></div>
+          <div class="an-item"><div class="an-label">Sin Internet</div><div class="an-val red" id="an-sininet">—</div><div class="an-sub">CC sin servicio</div></div>
+          <div class="an-item"><div class="an-label">Sin Agua</div><div class="an-val red" id="an-sinagua">—</div><div class="an-sub">CC sin agua potable</div></div>
+          <div class="an-item"><div class="an-label">Baños Malos</div><div class="an-val red" id="an-banosmalo">—</div><div class="an-sub">CC con mal estado</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW -->
+  <div class="charts-grid">
+    <!-- EQUIPOS POR REGIÓN -->
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">💻 Equipos por Región</span></div>
+      <div class="card-body"><div class="chart-wrap"><canvas id="chartEquipos"></canvas></div></div>
+    </div>
+    <!-- CONECTIVIDAD -->
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">📶 Conectividad</span></div>
+      <div class="card-body"><div class="chart-wrap"><canvas id="chartInet"></canvas></div></div>
+    </div>
+    <!-- CONDICIONES FÍSICAS -->
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">🏗️ Condiciones Físicas</span></div>
+      <div class="card-body">
+        <div class="prog-row" id="condFisicas"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">📋 Registros</span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--dim)" id="tblCount">—</span>
+    </div>
+    <div class="tbl-wrap" style="max-height:400px;overflow-y:auto">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Centro</th><th>Municipio</th><th>Región</th>
+            <th>Prioridad</th><th>Equipos</th><th>Estado Eq.</th>
+            <th>Internet</th><th>Agua</th><th>Baños</th><th>Limpieza</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxyms4gQQTVfoKusMYsNZdXASW_q4BxIwscKihlj29u9RkV__4e8-f9AmckWkzJC3xC/exec';
+
+const CENTROS_DATA = [
+  {no:1,nombre:"CC ALFONSO MARTÍNEZ DOMINGUEZ",municipio:"SABINAS HIDALGO",region:"NORTE",lat:26.510998,lng:-100.205693},
+  {no:2,nombre:"CC ALIANZA REAL",municipio:"ESCOBEDO",region:"METROPOLITANOS",lat:25.844857,lng:-100.384918},
+  {no:3,nombre:"CC ALIANZA SECTOR Q",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.776752,lng:-100.405971},
+  {no:4,nombre:"CC ALLENDE",municipio:"ALLENDE",region:"CITRICOLA",lat:25.295999,lng:-100.033391},
+  {no:5,nombre:"CC ARBOLEDAS DE LOS NARANJOS",municipio:"JUÁREZ",region:"PERIFERIA",lat:25.628696,lng:-100.167388},
+  {no:6,nombre:"CC CADEREYTA",municipio:"CADEREYTA",region:"PERIFERIA",lat:25.560916,lng:-99.980584},
+  {no:7,nombre:"CC CERRALVO",municipio:"CERRALVO",region:"ORIENTE",lat:26.078196,lng:-99.618754},
+  {no:8,nombre:"CC CHINA",municipio:"CHINA",region:"ORIENTE",lat:25.702909,lng:-99.232918},
+  {no:9,nombre:"CC EL CARMEN",municipio:"EL CARMEN",region:"PERIFERIA",lat:25.939171,lng:-100.362835},
+  {no:10,nombre:"CC EL MIRADOR",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.668854,lng:-100.333368},
+  {no:11,nombre:"CC EULALIO VILLARREAL",municipio:"ESCOBEDO",region:"METROPOLITANOS",lat:25.805332,lng:-100.370419},
+  {no:12,nombre:"CC FERNANDO AMILPA",municipio:"ESCOBEDO",region:"METROPOLITANOS",lat:25.806001,lng:-100.270280},
+  {no:13,nombre:"CC GALEANA",municipio:"GALEANA",region:"SUR",lat:24.798108,lng:-100.059058},
+  {no:14,nombre:"CC GRAL. TERÁN",municipio:"GRAL. TERAN",region:"CITRICOLA",lat:25.248723,lng:-99.703365},
+  {no:15,nombre:"CC GRAL. ZUAZUA",municipio:"GRAL. ZUAZUA",region:"PERIFERIA",lat:25.891138,lng:-100.176640},
+  {no:16,nombre:"CC HÉCTOR CABALLERO",municipio:"JUÁREZ",region:"PERIFERIA",lat:25.634891,lng:-100.129500},
+  {no:17,nombre:"CC HIGUERAS",municipio:"HIGUERAS",region:"PERIFERIA",lat:25.954168,lng:-100.014110},
+  {no:18,nombre:"CC INDEPENDENCIA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.651497,lng:-100.314473},
+  {no:19,nombre:"CC LA ALIANZA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.775832,lng:-100.415971},
+  {no:20,nombre:"CC LA ERMITA",municipio:"SANTA CATARINA",region:"METROPOLITANOS",lat:25.698835,lng:-100.432421},
+  {no:21,nombre:"CC LA ESTANZUELA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.583818,lng:-100.237315},
+  {no:22,nombre:"CC LAS SABINAS",municipio:"GUADALUPE",region:"METROPOLITANOS",lat:25.689585,lng:-100.193562},
+  {no:23,nombre:"CC LINARES",municipio:"LINARES",region:"CITRICOLA",lat:24.860199,lng:-99.534223},
+  {no:24,nombre:"CC LINARES LIBERTAD",municipio:"LINARES",region:"CITRICOLA",lat:24.847474,lng:-99.555224},
+  {no:25,nombre:"CC LOMA CHIQUITA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.730326,lng:-100.354408},
+  {no:26,nombre:"CC LOMAS DE LA FAMA",municipio:"SANTA CATARINA",region:"METROPOLITANOS",lat:25.691472,lng:-100.420565},
+  {no:27,nombre:"CC LOS ENCINOS",municipio:"JUÁREZ",region:"PERIFERIA",lat:25.643775,lng:-100.117525},
+  {no:28,nombre:"CC MONTE KRISTAL",municipio:"JUÁREZ",region:"PERIFERIA",lat:25.618884,lng:-100.146028},
+  {no:29,nombre:"CC MONTEMORELOS",municipio:"MONTEMORELOS",region:"CITRICOLA",lat:25.189476,lng:-99.807866},
+  {no:30,nombre:"CC PESQUERÍA",municipio:"PESQUERÍA",region:"PERIFERIA",lat:25.790222,lng:-100.046474},
+  {no:31,nombre:"CC PRADOS DE SANTA ROSA",municipio:"APODACA",region:"METROPOLITANOS",lat:25.799917,lng:-100.225755},
+  {no:32,nombre:"CC RENÉ ÁLVAREZ",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.765387,lng:-100.358447},
+  {no:33,nombre:"CC REVOLUCIÓN PROLETARIA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.633553,lng:-100.288809},
+  {no:34,nombre:"CC SABINAS HIDALGO",municipio:"SABINAS HIDALGO",region:"NORTE",lat:26.523115,lng:-100.166787},
+  {no:35,nombre:"CC SALINAS VICTORIA",municipio:"SALINAS VICTORIA",region:"PERIFERIA",lat:25.909408,lng:-100.272582},
+  {no:36,nombre:"CC SAN BERNABÉ",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.765277,lng:-100.369837},
+  {no:37,nombre:"CC SAN GILBERTO",municipio:"SANTA CATARINA",region:"METROPOLITANOS",lat:25.700861,lng:-100.459667},
+  {no:38,nombre:"CC SANTA FÉ",municipio:"APODACA",region:"METROPOLITANOS",lat:25.726334,lng:-100.173616},
+  {no:39,nombre:"CC SANTIAGO",municipio:"SANTIAGO",region:"CITRICOLA",lat:25.377332,lng:-100.113810},
+  {no:40,nombre:"CC SIERRA VENTANA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.628134,lng:-100.288197},
+  {no:41,nombre:"CC TIERRA PROPIA",municipio:"GUADALUPE",region:"METROPOLITANOS",lat:25.641526,lng:-100.189808},
+  {no:42,nombre:"CC TOPO CHICO",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.725947,lng:-100.344326},
+  {no:43,nombre:"CC UNIDAD PILOTO",municipio:"GUADALUPE",region:"METROPOLITANOS",lat:25.644229,lng:-100.215360},
+  {no:44,nombre:"CC VALLE DE LA ESPERANZA",municipio:"MONTERREY",region:"METROPOLITANOS",lat:25.783168,lng:-100.401585},
+  {no:45,nombre:"CC VALLE SOLEADO",municipio:"GUADALUPE",region:"METROPOLITANOS",lat:25.704081,lng:-100.169583},
+  {no:46,nombre:"CC ZARAGOZA",municipio:"ZARAGOZA",region:"SUR",lat:23.963609,lng:-99.761379},
+  {no:47,nombre:"MACROCENTRO ALLENDE",municipio:"ALLENDE",region:"CITRICOLA",lat:25.300963,lng:-100.031416},
+  {no:48,nombre:"CC MIER Y NORIEGA",municipio:"MIER Y NORIEGA",region:"SUR",lat:23.427239,lng:-100.119521},
+  {no:49,nombre:"CC BUSTAMANTE",municipio:"BUSTAMANTE",region:"NORTE",lat:26.534358,lng:-100.500399}
+];
+
+// ══ ESTADO ══
+let todosRegistros = [];
+let filtros = { region:'', prioridad:'', municipio:'' };
+let mapa, marcadores = {};
+let chartDonut, chartEquipos, chartInet;
+
+// ══ DETECCIÓN WEB / MÓVIL ══
+const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent)
+              || window.innerWidth <= 768;
+if (isMobile) document.body.classList.add('is-mobile');
+
+// ══ INIT ══
+window.addEventListener('DOMContentLoaded', () => {
+  initMapa();
+  cargarDatos();
+  // En móvil: actualización automática cada 5 min
+  if (isMobile) setInterval(cargarDatos, 5 * 60 * 1000);
+});
+
+// ══ MAPA ══
+function initMapa() {
+  const zoom = isMobile ? 7 : 8;
+  mapa = L.map('map', {
+    zoomControl: !isMobile,
+    attributionControl: false,
+    tap: isMobile,
+    dragging: true
+  }).setView([25.67, -100.31], zoom);
+
+  // Zoom control en móvil: abajo a la derecha para no tapar contenido
+  if (isMobile) L.control.zoom({ position: 'bottomright' }).addTo(mapa);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19
+  }).addTo(mapa);
+
+  CENTROS_DATA.forEach(cc => {
+    const m = crearMarcador(cc, null);
+    m.addTo(mapa);
+    marcadores[cc.nombre] = m;
+  });
+}
+
+function crearMarcador(cc, registro) {
+  const color = registro
+    ? (registro.prioridad==='P1'?'#ff4444':registro.prioridad==='P2'?'#ffb020':'#4cca80')
+    : '#f15a00';
+  const size  = registro ? (registro.prioridad==='P1' ? 14 : 11) : 9;
+
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,.4);box-shadow:0 0 8px ${color}88;cursor:pointer"></div>`,
+    iconSize: [size, size], iconAnchor: [size/2, size/2]
+  });
+
+  const m = L.marker([cc.lat, cc.lng], { icon });
+
+  const pLabel = registro
+    ? `<span style="background:${color};color:#000;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:800">${registro.prioridad}</span>`
+    : '<span style="color:#f15a00;font-size:10px">SIN DIAGNÓSTICO</span>';
+
+  const popContent = `
+    <div style="font-family:'Barlow Condensed',sans-serif;min-width:200px">
+      <div style="font-size:14px;font-weight:800;margin-bottom:6px;line-height:1.2">${cc.nombre}</div>
+      <div style="font-size:11px;color:#999;margin-bottom:8px">${cc.municipio} · ${cc.region}</div>
+      ${pLabel}
+      ${registro ? `
+        <div style="margin-top:8px;display:grid;gap:3px;font-size:11px">
+          <div>💻 Equipos: ${registro.eq_funcionales||'—'}/${registro.eq_en_aula||'—'} · ${registro.eq_estado||'—'}</div>
+          <div>📶 Internet: ${registro.internet_calidad||'—'}</div>
+          <div>💧 Agua: ${registro.agua_potable||'—'} · 🚿 Baños: ${registro.banos||'—'}</div>
+          <div style="color:#f15a00;font-size:10px;margin-top:4px">📅 ${registro.fecha_visita||'—'}</div>
+        </div>
+      ` : '<div style="margin-top:8px;font-size:11px;color:#666">Pendiente de visita</div>'}
+    </div>`;
+
+  m.bindPopup(popContent, { maxWidth: 280 });
+  return m;
+}
+
+function actualizarMarcadores(registrosFiltrados) {
+  // Para cada CC, buscar el diagnóstico más reciente
+  CENTROS_DATA.forEach(cc => {
+    const regs = registrosFiltrados.filter(r =>
+      r.centro_nombre && r.centro_nombre.includes(cc.nombre.substring(0,15))
+    ).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const reg = regs[0] || null;
+
+    if (marcadores[cc.nombre]) {
+      mapa.removeLayer(marcadores[cc.nombre]);
+    }
+    const m = crearMarcador(cc, reg);
+    m.addTo(mapa);
+    marcadores[cc.nombre] = m;
+  });
+}
+
+// ══ CARGA DE DATOS ══
+async function cargarDatos() {
+  document.getElementById('loadingOverlay').style.display = 'flex';
+  document.getElementById('btnRefresh').classList.add('loading');
+  try {
+    const res  = await fetch(APPS_SCRIPT_URL + '?action=datos', { cache: 'no-cache' });
+    const json = await res.json();
+    todosRegistros = (json.registros || []).filter(r => r.centro_nombre);
+    poblarMunicipios();
+    renderTodo();
+    document.getElementById('hdrUpdate').textContent = 'Actualizado: ' + new Date().toLocaleString('es-MX',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'});
+  } catch(e) {
+    console.error('Error cargando datos:', e);
+    document.getElementById('hdrUpdate').textContent = 'Error al cargar';
+  }
+  document.getElementById('loadingOverlay').style.display = 'none';
+  document.getElementById('btnRefresh').classList.remove('loading');
+}
+
+function poblarMunicipios() {
+  const mpios = [...new Set(todosRegistros.map(r => r.municipio).filter(Boolean))].sort();
+  const sel = document.getElementById('selMunicipio');
+  sel.innerHTML = '<option value="">Todos</option>' +
+    mpios.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+// ══ FILTROS ══
+function setFiltro(campo, valor, btn) {
+  filtros[campo] = valor;
+  if (btn) {
+    const pills = btn.parentElement.querySelectorAll('.pill');
+    pills.forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  renderTodo();
+  // Zoom al mapa según región seleccionada
+  if (campo === 'region') zoomRegion(valor);
+}
+
+const REGION_BOUNDS = {
+  'METROPOLITANOS': [[25.56, -100.50], [25.90, -100.10]],
+  'PERIFERIA':      [[25.55, -100.40], [26.00, -99.90]],
+  'NORTE':          [[26.40, -100.60], [26.60, -100.10]],
+  'SUR':            [[23.30, -100.20], [25.40, -99.90]],
+  'ORIENTE':        [[25.60, -99.70], [26.20, -99.10]],
+  'CITRICOLA':      [[24.80, -100.10], [25.40, -99.50]],
+};
+
+function zoomRegion(region) {
+  if (!region) {
+    mapa.setView([25.67, -100.31], 8); // Vista general NL
+    return;
+  }
+  const bounds = REGION_BOUNDS[region];
+  if (bounds) {
+    mapa.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
+  }
+}
+
+function registrosFiltrados() {
+  return todosRegistros.filter(r => {
+    if (filtros.region    && r.region    !== filtros.region)    return false;
+    if (filtros.prioridad && r.prioridad !== filtros.prioridad) return false;
+    if (filtros.municipio && r.municipio !== filtros.municipio) return false;
+    return true;
+  });
+}
+
+// ══ RENDER TOTAL ══
+function renderTodo() {
+  const regs = registrosFiltrados();
+  renderKPIs(regs);
+  renderDonut(regs);
+  renderChartEquipos(regs);
+  renderChartInet(regs);
+  renderCondFisicas(regs);
+  renderTabla(regs);
+  actualizarMarcadores(regs);
+}
+
+// ══ KPIs ══
+function renderKPIs(regs) {
+  const visitados = regs.length;
+  const p1 = regs.filter(r=>r.prioridad==='P1').length;
+  const p2 = regs.filter(r=>r.prioridad==='P2').length;
+  const p3 = regs.filter(r=>r.prioridad==='P3').length;
+
+  // Equipos funcionales %
+  let equipPct = '—';
+  const conEquip = regs.filter(r => parseInt(r.eq_en_aula) > 0);
+  if (conEquip.length) {
+    const pct = conEquip.reduce((s,r) => s + (parseInt(r.eq_funcionales)||0) / (parseInt(r.eq_en_aula)||1) * 100, 0) / conEquip.length;
+    equipPct = Math.round(pct) + '%';
+  }
+
+  // Internet OK
+  const inetOK = regs.filter(r => r.internet_calidad==='Buena'||r.internet_calidad==='Regular').length;
+  const inetPct = visitados ? Math.round(inetOK/visitados*100)+'%' : '—';
+
+  // Agua
+  const agua = regs.filter(r=>r.agua_potable==='Sí').length;
+  const aguaPct = visitados ? Math.round(agua/visitados*100)+'%' : '—';
+
+  // Análisis rápido
+  const eqMalo    = regs.filter(r=>r.eq_estado==='Malo').length;
+  const sinInet   = regs.filter(r=>r.internet_calidad==='Sin internet'||r.internet_calidad==='Mala').length;
+  const sinAgua   = regs.filter(r=>r.agua_potable==='No').length;
+  const banosMalo = regs.filter(r=>r.banos==='Malo').length;
+
+  set('kv-visitados', visitados);
+  set('ks-visitados', `de 49 centros (${visitados?Math.round(visitados/49*100):0}%)`);
+  set('kv-p1', p1); set('kv-p2', p2); set('kv-p3', p3);
+  set('kv-equip', equipPct);
+  set('kv-inet', inetPct);
+  set('kv-agua', aguaPct);
+  set('an-eqmalo', eqMalo); set('an-sininet', sinInet);
+  set('an-sinagua', sinAgua); set('an-banosmalo', banosMalo);
+}
+
+function set(id, val) { const el=document.getElementById(id); if(el) el.textContent=val; }
+
+// ══ DONUT ══
+function renderDonut(regs) {
+  const p1=regs.filter(r=>r.prioridad==='P1').length;
+  const p2=regs.filter(r=>r.prioridad==='P2').length;
+  const p3=regs.filter(r=>r.prioridad==='P3').length;
+  const sd=49-regs.length;
+
+  const data = { labels:['P1 Urgente','P2 Moderado','P3 En orden','Sin visita'],
+    datasets:[{ data:[p1,p2,p3,sd], backgroundColor:['#ff4444','#ffb020','#4cca80','#2e1800'],
+    borderColor:['#ff4444','#ffb020','#4cca80','#4a2800'], borderWidth:2 }]};
+
+  if (chartDonut) chartDonut.destroy();
+  chartDonut = new Chart(document.getElementById('chartDonut'), {
+    type:'doughnut', data,
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'65%',
+      plugins:{ legend:{ position:'bottom', labels:{ color:'#c08060', font:{family:'Barlow Condensed',size:11}, boxWidth:10, padding:8 }},
+      tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed}` }}}
+    }
+  });
+}
+
+// ══ CHART EQUIPOS POR REGIÓN ══
+function renderChartEquipos(regs) {
+  const regiones = ['METROPOLITANOS','PERIFERIA','NORTE','SUR','ORIENTE','CITRICOLA'];
+  const labels   = ['AMM','Periferia','Norte','Sur','Oriente','Citrícola'];
+  const vals = regiones.map(reg => {
+    const r = regs.filter(x => x.region===reg && parseInt(x.eq_en_aula)>0);
+    if (!r.length) return 0;
+    return Math.round(r.reduce((s,x)=>(parseInt(x.eq_funcionales)||0)/(parseInt(x.eq_en_aula)||1)*100+s,0)/r.length);
+  });
+
+  if (chartEquipos) chartEquipos.destroy();
+  chartEquipos = new Chart(document.getElementById('chartEquipos'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'% Equipos funcionales',
+      data:vals, backgroundColor:'rgba(241,90,0,.7)', borderColor:'#f15a00', borderWidth:1, borderRadius:4 }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ ticks:{color:'#7a4828',font:{family:'Barlow Condensed',size:10}}, grid:{color:'#2e1800'} },
+               y:{ ticks:{color:'#7a4828',font:{family:'Barlow Condensed',size:10}, callback:v=>v+'%'}, grid:{color:'#2e1800'}, max:100 }},
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y}%`}}}
+    }
+  });
+}
+
+// ══ CHART INTERNET ══
+function renderChartInet(regs) {
+  const cats   = ['Buena','Regular','Mala','Sin internet'];
+  const colors = ['#4cca80','#ffb020','#ff7744','#ff4444'];
+  const vals   = cats.map(c => regs.filter(r=>r.internet_calidad===c).length);
+
+  if (chartInet) chartInet.destroy();
+  chartInet = new Chart(document.getElementById('chartInet'), {
+    type:'bar',
+    data:{ labels:cats, datasets:[{ label:'CC', data:vals, backgroundColor:colors, borderRadius:4 }]},
+    options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      scales:{ x:{ ticks:{color:'#7a4828',font:{family:'Barlow Condensed',size:10}}, grid:{color:'#2e1800'} },
+               y:{ ticks:{color:'#c08060',font:{family:'Barlow Condensed',size:11}}, grid:{display:false} }},
+      plugins:{ legend:{display:false} }
+    }
+  });
+}
+
+// ══ CONDICIONES FÍSICAS ══
+function renderCondFisicas(regs) {
+  const total = regs.length || 1;
+  const items = [
+    { label:'Baños Buenos',     val: regs.filter(r=>r.banos==='Bueno').length,    color:'#4cca80' },
+    { label:'Limpieza Buena',   val: regs.filter(r=>r.limpieza==='Buena').length,  color:'#4cca80' },
+    { label:'Pintura Buena',    val: regs.filter(r=>r.pintura==='Buena').length,   color:'#4cca80' },
+    { label:'Gas disponible',   val: regs.filter(r=>r.gas==='Sí').length,          color:'#5ab4ff' },
+    { label:'Energía estable',  val: regs.filter(r=>r.energia_electrica==='Estable').length, color:'#ffb020' },
+  ];
+  document.getElementById('condFisicas').innerHTML = items.map(i => {
+    const pct = Math.round(i.val/total*100);
+    return `<div class="prog-item">
+      <div class="prog-label"><span>${i.label}</span><span style="color:${i.color};font-weight:700">${pct}%</span></div>
+      <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${i.color}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ══ TABLA ══
+const BADGE_MAP = {
+  'Bueno':'b-b','Buena':'b-b','Estable':'b-b','Sí':'b-b',
+  'Regular':'b-r','Parcial':'b-r','Fallas':'b-r',
+  'Malo':'b-m','Mala':'b-m','Sin internet':'b-m','No':'b-m',
+  'P1':'b-p1','P2':'b-p2','P3':'b-p3'
+};
+const REGION_MAP = {
+  'METROPOLITANOS':'reg-met','PERIFERIA':'reg-per','NORTE':'reg-nor',
+  'SUR':'reg-sur','ORIENTE':'reg-ori','CITRICOLA':'reg-cit'
+};
+
+function badge(val) {
+  if (!val) return '<span style="color:#4a2800">—</span>';
+  const cls = BADGE_MAP[val] || '';
+  return `<span class="badge ${cls}">${val}</span>`;
+}
+
+function renderTabla(regs) {
+  document.getElementById('tblCount').textContent = `${regs.length} registros`;
+  const sorted = [...regs].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  document.getElementById('tblBody').innerHTML = !sorted.length
+    ? `<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--dim);font-family:'Barlow Condensed',sans-serif">Sin registros con los filtros actuales</td></tr>`
+    : sorted.map(r => `
+      <tr>
+        <td>${r.fecha_visita||'—'}</td>
+        <td style="max-width:200px;white-space:normal;line-height:1.2;font-weight:700">${r.centro_nombre||'—'}</td>
+        <td>${r.municipio||'—'}</td>
+        <td><span class="badge ${REGION_MAP[r.region]||''}">${r.region||'—'}</span></td>
+        <td>${badge(r.prioridad)}</td>
+        <td style="font-weight:700;color:${parseInt(r.eq_funcionales)<parseInt(r.eq_en_aula)*0.5?'var(--red)':'var(--text)'}">${r.eq_funcionales||'—'}/${r.eq_en_aula||'—'}</td>
+        <td>${badge(r.eq_estado)}</td>
+        <td>${badge(r.internet_calidad)}</td>
+        <td>${badge(r.agua_potable)}</td>
+        <td>${badge(r.banos)}</td>
+        <td>${badge(r.limpieza)}</td>
+        <td style="max-width:220px;white-space:normal;font-size:11px;color:var(--muted);line-height:1.3">${r.acciones_recomendadas||'—'}</td>
+      </tr>`).join('');
+}
+</script>
+</body>
+</html>
