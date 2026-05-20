@@ -171,6 +171,14 @@ html,body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif
 .accion-prio.p3{background:rgba(76,202,128,.15);color:var(--green);}
 .accion-text{font-size:13px;color:var(--text-muted);}
 .divider{height:1px;background:var(--border);margin:4px 0;}
+/* ── PROVIDER MULTI-SELECT ── */
+.provider-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
+.prov-chip{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.04em;padding:6px 12px;border:1px solid var(--border);border-radius:20px;background:var(--bg);color:var(--text-muted);cursor:pointer;transition:all .18s;user-select:none;}
+.prov-chip.active{border-color:var(--accent);color:var(--accent);background:rgba(241,90,0,.1);}
+.prov-chip.active-noservice{border-color:var(--red);color:var(--red);background:rgba(255,68,68,.1);}
+.provider-speed-row{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-top:6px;}
+.provider-speed-label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.provider-speed-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);}
 .note-box{background:rgba(241,90,0,.08);border:1px solid rgba(241,90,0,.3);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--accent2);font-family:'Barlow Condensed',sans-serif;letter-spacing:.03em;display:flex;gap:8px;align-items:flex-start;}
 .sheet-url-note{background:var(--surface2);border:1px dashed var(--border);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;word-break:break-all;letter-spacing:.02em;}
 .sheet-url-note strong{color:var(--accent);display:block;margin-bottom:4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;}
@@ -329,25 +337,15 @@ html,body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif
         <input type="hidden" id="f_eq_estado">
       </div>
       <div class="divider"></div>
+
+      <!-- MULTI-SELECT PROVEEDORES -->
       <div class="field-group">
-        <label class="field-label">Proveedor de Internet</label>
-        <select class="field-select" id="f_proveedor">
-          <option value="">— Selecciona —</option>
-          <option>Telmex / Infinitum</option><option>Megacable</option><option>Totalplay</option>
-          <option>Axtel</option><option>IZZI</option><option>Starlink</option>
-          <option>Sin servicio</option><option>Otro</option>
-        </select>
+        <label class="field-label">Proveedores de Internet <span style="font-size:10px;color:var(--text-dim)">(selección múltiple)</span></label>
+        <div class="provider-chips" id="providerChips"></div>
       </div>
-      <div class="cols-2">
-        <div class="field-group">
-          <label class="field-label">Bajada (Mbps)</label>
-          <input type="number" class="field-input" id="f_vel_bajada" placeholder="ej. 25" min="0" step="0.1">
-        </div>
-        <div class="field-group">
-          <label class="field-label">Subida (Mbps)</label>
-          <input type="number" class="field-input" id="f_vel_subida" placeholder="ej. 5" min="0" step="0.1">
-        </div>
-      </div>
+
+      <!-- VELOCIDADES DINÁMICAS POR PROVEEDOR -->
+      <div id="providerSpeeds"></div>
       <div class="field-group">
         <label class="field-label">Calidad Real de la Señal</label>
         <div class="semaphore">
@@ -560,7 +558,84 @@ const REGION_LABEL = {
   'SUR':'Sur', 'ORIENTE':'Oriente', 'CITRICOLA':'Citrícola'
 };
 
-// ══ ESTADO ══
+// ══ PROVEEDORES MULTI-SELECT ══
+const PROVEEDORES = [
+  'Telmex / Infinitum','Megacable','Totalplay','Axtel',
+  'IZZI','Starlink','CFE','Conéctate NL','Sin servicio','Otro'
+];
+let selectedProviders = [];
+
+function initProviderChips() {
+  const container = document.getElementById('providerChips');
+  container.innerHTML = PROVEEDORES.map(p => `
+    <button type="button" class="prov-chip${p==='Sin servicio'?' active-noservice-base':''}"
+      data-proveedor="${p}" onclick="toggleProvider('${p}')">${p}</button>
+  `).join('');
+}
+
+function toggleProvider(proveedor) {
+  if (proveedor === 'Sin servicio') {
+    if (selectedProviders.includes('Sin servicio')) {
+      selectedProviders = [];
+    } else {
+      selectedProviders = ['Sin servicio'];
+    }
+  } else {
+    selectedProviders = selectedProviders.filter(p => p !== 'Sin servicio');
+    if (selectedProviders.includes(proveedor)) {
+      selectedProviders = selectedProviders.filter(p => p !== proveedor);
+    } else {
+      selectedProviders.push(proveedor);
+    }
+  }
+  updateProviderUI();
+}
+
+function updateProviderUI() {
+  // Actualizar chips
+  document.querySelectorAll('.prov-chip').forEach(chip => {
+    const p = chip.dataset.proveedor;
+    chip.classList.remove('active','active-noservice');
+    if (p === 'Sin servicio' && selectedProviders.includes('Sin servicio')) {
+      chip.classList.add('active-noservice');
+    } else if (selectedProviders.includes(p)) {
+      chip.classList.add('active');
+    }
+  });
+
+  // Actualizar filas de velocidad
+  const container = document.getElementById('providerSpeeds');
+  const provWithSpeed = selectedProviders.filter(p => p !== 'Sin servicio');
+  container.innerHTML = provWithSpeed.map(p => {
+    const key = p.replace(/[^a-zA-Z0-9]/g,'_');
+    return `
+      <div class="provider-speed-row">
+        <div class="provider-speed-label">${p}</div>
+        <div class="cols-2">
+          <div class="field-group">
+            <label class="field-label">Bajada (Mbps)</label>
+            <input type="number" class="field-input" id="vel_b_${key}" placeholder="ej. 25" min="0" step="0.1">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Subida (Mbps)</label>
+            <input type="number" class="field-input" id="vel_s_${key}" placeholder="ej. 5" min="0" step="0.1">
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function getProveedoresData() {
+  return selectedProviders.map(p => {
+    if (p === 'Sin servicio') return { proveedor: p, bajada: '', subida: '' };
+    const key = p.replace(/[^a-zA-Z0-9]/g,'_');
+    return {
+      proveedor: p,
+      bajada: document.getElementById(`vel_b_${key}`)?.value || '',
+      subida: document.getElementById(`vel_s_${key}`)?.value || ''
+    };
+  });
+}
 let queue = JSON.parse(localStorage.getItem('cc_queue')||'[]');
 let config = JSON.parse(localStorage.getItem('cc_config')||'{}');
 let isOnline = navigator.onLine;
@@ -580,6 +655,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   saveConfig();
   updateSyncBadge(); updateQueueBadge(); updateStats();
   renderAllItems('');
+  initProviderChips();
   // Intentar sincronizar pendientes al iniciar si hay conexión
   if(isOnline && queue.filter(r=>r.status==='pending').length > 0){
     setTimeout(syncPending, 1500);
@@ -806,9 +882,9 @@ function collectForm(){
     eq_admin: document.getElementById('f_eq_admin').value,
     eq_extras: document.getElementById('f_eq_extra').value,
     eq_estado: document.getElementById('f_eq_estado').value,
-    proveedor_internet: document.getElementById('f_proveedor').value,
-    vel_bajada_mbps: document.getElementById('f_vel_bajada').value,
-    vel_subida_mbps: document.getElementById('f_vel_subida').value,
+    proveedor_internet: selectedProviders.join(' | '),
+    vel_bajada_mbps: getProveedoresData().filter(p=>p.bajada).map(p=>`${p.proveedor}:${p.bajada}`).join(' | '),
+    vel_subida_mbps: getProveedoresData().filter(p=>p.subida).map(p=>`${p.proveedor}:${p.subida}`).join(' | '),
     internet_calidad: document.getElementById('f_inet_calidad').value,
     internet_cobertura: document.getElementById('f_inet_cobertura').value,
     energia_electrica: document.getElementById('f_energia').value,
@@ -854,6 +930,9 @@ function resetForm(){
   const now=new Date();
   document.getElementById('f_fecha').value=now.toISOString().split('T')[0];
   document.getElementById('f_hora').value=now.toTimeString().slice(0,5);
+  selectedProviders = [];
+  updateProviderUI();
+  document.querySelectorAll('.prov-chip').forEach(c=>c.classList.remove('active','active-noservice'));
   selectedCC=null;
   window.scrollTo(0,0);
 }
