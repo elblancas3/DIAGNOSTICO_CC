@@ -858,15 +858,12 @@ function resetForm(){
   window.scrollTo(0,0);
 }
 
-// ══ SYNC — form POST con iframe sandboxed ══
+// ══ SYNC — form POST con iframe oculto ══
 function syncViaForm(payload) {
   return new Promise(resolve => {
     const id = 'sf' + Date.now();
     const iframe = document.createElement('iframe');
     iframe.name = id;
-    // allow-forms: permite recibir el POST
-    // SIN allow-top-navigation: el iframe NO puede navegar la ventana principal
-    iframe.setAttribute('sandbox', 'allow-forms allow-same-origin');
     iframe.style.cssText = 'position:fixed;top:-999px;left:-999px;width:1px;height:1px;opacity:0;pointer-events:none;border:0;';
     document.body.appendChild(iframe);
 
@@ -885,13 +882,13 @@ function syncViaForm(payload) {
 
     form.submit();
 
-    // Eliminar a los 800ms: el request ya está en vuelo,
-    // Apps Script lo procesa, la respuesta no tiene dónde cargar → sin navegación
+    // Remover a los 2s: el request ya salió, Apps Script lo procesa
+    // La respuesta no tiene dónde cargar → sin navegación
     setTimeout(() => {
       try { document.body.removeChild(form);   } catch(_) {}
       try { document.body.removeChild(iframe); } catch(_) {}
       resolve();
-    }, 800);
+    }, 2000);
   });
 }
 
