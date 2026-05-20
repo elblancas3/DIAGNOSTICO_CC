@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#f15a00">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CC Diagnóstico">
+<link rel="manifest" href="manifest.json">
 <title>CC Diagnóstico · NL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -984,6 +986,13 @@ function showToast(type, msg, duration=3500){
   const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg;
   document.getElementById('toastContainer').appendChild(t);
   setTimeout(()=>t.remove(), duration);
+}
+</script>
+
+<script>
+// ══ SERVICE WORKER — mantiene navegación dentro de la PWA ══
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 </script>
 </body>
