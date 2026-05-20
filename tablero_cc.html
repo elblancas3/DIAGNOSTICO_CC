@@ -461,15 +461,18 @@ function initMapa() {
   });
 }
 
-function crearMarcador(cc, registro) {
+function crearMarcador(cc, registro, dimmed) {
   const color = registro
     ? (registro.prioridad==='P1'?'#ff4444':registro.prioridad==='P2'?'#ffb020':'#4cca80')
     : '#f15a00';
-  const size  = registro ? (registro.prioridad==='P1' ? 14 : 11) : 9;
+  // Dimmed: marcadores de otras regiones se achican y desvanecen
+  const opacity = dimmed ? 0.2 : 1;
+  const size    = dimmed ? 7 : (registro ? (registro.prioridad==='P1' ? 16 : 12) : 9);
+  const glow    = dimmed ? 'none' : `0 0 ${registro?'10':'6'}px ${color}99`;
 
   const icon = L.divIcon({
     className: '',
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,.4);box-shadow:0 0 8px ${color}88;cursor:pointer"></div>`,
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,${dimmed?0.1:0.5});box-shadow:${glow};cursor:pointer;opacity:${opacity};transition:all .3s"></div>`,
     iconSize: [size, size], iconAnchor: [size/2, size/2]
   });
 
@@ -499,17 +502,16 @@ function crearMarcador(cc, registro) {
 }
 
 function actualizarMarcadores(registrosFiltrados) {
-  // Para cada CC, buscar el diagnóstico más reciente
+  const regionActiva = filtros.region;
   CENTROS_DATA.forEach(cc => {
     const regs = registrosFiltrados.filter(r =>
       r.centro_nombre && r.centro_nombre.includes(cc.nombre.substring(0,15))
     ).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
     const reg = regs[0] || null;
-
-    if (marcadores[cc.nombre]) {
-      mapa.removeLayer(marcadores[cc.nombre]);
-    }
-    const m = crearMarcador(cc, reg);
+    // Dimmer si hay filtro de región y este CC no es de esa región
+    const dimmed = regionActiva && cc.region !== regionActiva;
+    if (marcadores[cc.nombre]) mapa.removeLayer(marcadores[cc.nombre]);
+    const m = crearMarcador(cc, reg, dimmed);
     m.addTo(mapa);
     marcadores[cc.nombre] = m;
   });
@@ -570,6 +572,15 @@ function poblarMunicipios() {
 }
 
 // ══ FILTROS ══
+const REGION_BOUNDS = {
+  'METROPOLITANOS': [[25.56,-100.50],[25.90,-100.10]],
+  'PERIFERIA':      [[25.55,-100.40],[26.00,-99.90]],
+  'NORTE':          [[26.40,-100.60],[26.60,-100.10]],
+  'SUR':            [[23.30,-100.20],[25.40,-99.90]],
+  'ORIENTE':        [[25.60,-99.70], [26.20,-99.10]],
+  'CITRICOLA':      [[24.80,-100.10],[25.40,-99.50]],
+};
+
 function setFiltro(campo, valor, btn) {
   filtros[campo] = valor;
   if (btn) {
@@ -590,17 +601,13 @@ function zoomFiltro(campo, valor) {
     return;
   }
 
-  // Para prioridad y municipio: calcular bounds desde los centros que coinciden
   let coords = [];
-
   if (campo === 'municipio') {
     coords = CENTROS_DATA
       .filter(cc => cc.municipio === valor)
       .map(cc => [cc.lat, cc.lng]);
   }
-
   if (campo === 'prioridad') {
-    // Centros diagnosticados con esa prioridad
     const nombres = todosRegistros
       .filter(r => r.prioridad === valor)
       .map(r => r.centro_nombre);
@@ -608,12 +615,8 @@ function zoomFiltro(campo, valor) {
       .filter(cc => nombres.some(n => n && n.includes(cc.nombre.substring(0,15))))
       .map(cc => [cc.lat, cc.lng]);
   }
-
-  if (coords.length === 1) {
-    mapa.setView(coords[0], 13);
-  } else if (coords.length > 1) {
-    mapa.fitBounds(L.latLngBounds(coords), { padding:[40,40], maxZoom:13 });
-  }
+  if (coords.length === 1) mapa.setView(coords[0], 13);
+  else if (coords.length > 1) mapa.fitBounds(L.latLngBounds(coords), { padding:[40,40], maxZoom:13 });
 }
 
 function registrosFiltrados() {
