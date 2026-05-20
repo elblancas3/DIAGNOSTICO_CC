@@ -516,19 +516,47 @@ function actualizarMarcadores(registrosFiltrados) {
 }
 
 // ══ CARGA DE DATOS ══
+const SHEET_ID   = '1AHzMbVIGadbh_EZhUz4-8Cs-bJlqdkadtG3xTqLd7mc';
+const SHEET_NAME = 'Registros';
+
 async function cargarDatos() {
   document.getElementById('loadingOverlay').style.display = 'flex';
   document.getElementById('btnRefresh').classList.add('loading');
   try {
-    const res  = await fetch(APPS_SCRIPT_URL + '?action=datos&t=' + Date.now());
-    const json = await res.json();
-    todosRegistros = (json.registros || []).filter(r => r.centro_nombre);
+    // Google Visualization API — sin CORS, sin Apps Script, sin redirects
+    // Requiere que el Sheet sea "Cualquier persona con el enlace puede ver"
+    const url  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}&t=${Date.now()}`;
+    const res  = await fetch(url);
+    const text = await res.text();
+
+    // Respuesta: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+    const json  = JSON.parse(text.replace(/^[^\{]*/, '').replace(/\);\s*$/, ''));
+    const table = json.table;
+
+    if (!table || !table.rows || !table.rows.length) {
+      todosRegistros = [];
+      renderTodo();
+      document.getElementById('hdrUpdate').textContent = 'Sin registros aún';
+      return;
+    }
+
+    const headers = table.cols.map(c => c.label || c.id);
+    todosRegistros = table.rows.map(row => {
+      const obj = {};
+      headers.forEach((h, i) => {
+        const cell = row.c && row.c[i];
+        obj[h] = (cell && cell.v !== null && cell.v !== undefined) ? String(cell.v) : '';
+      });
+      return obj;
+    }).filter(r => r.centro_nombre);
+
     poblarMunicipios();
     renderTodo();
-    document.getElementById('hdrUpdate').textContent = 'Actualizado: ' + new Date().toLocaleString('es-MX',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'});
+    document.getElementById('hdrUpdate').textContent =
+      'Actualizado: ' + new Date().toLocaleString('es-MX', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'short' });
   } catch(e) {
-    console.error('Error cargando datos:', e);
-    document.getElementById('hdrUpdate').textContent = 'Error al cargar';
+    console.error('Error:', e);
+    document.getElementById('hdrUpdate').textContent = '⚠️ Error — verifica permisos del Sheet';
   }
   document.getElementById('loadingOverlay').style.display = 'none';
   document.getElementById('btnRefresh').classList.remove('loading');
