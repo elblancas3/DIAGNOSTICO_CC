@@ -857,17 +857,45 @@ function resetForm(){
 }
 
 // ══ SYNC ══
-// URLSearchParams + no-cors: simple request, sin preflight,
-// sobrevive el redirect de Apps Script, llega como e.parameter.payload
+// ══ SYNC — form POST con iframe oculto ══
+// Único método confirmado que sobrevive el redirect de Apps Script.
+// El iframe se elimina antes de que llegue la respuesta → no abre nada.
+function syncViaForm(payload) {
+  return new Promise(resolve => {
+    const id = 'sf' + Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.name = id;
+    iframe.style.cssText = 'position:fixed;top:-999px;left:-999px;width:1px;height:1px;opacity:0;pointer-events:none;border:0;';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = APPS_SCRIPT_URL;
+    form.target = id;
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type  = 'hidden';
+    input.name  = 'payload';
+    input.value = payload;
+    form.appendChild(input);
+    document.body.appendChild(form);
+
+    form.submit();
+
+    // Eliminar a los 800ms: el request ya está en vuelo,
+    // Apps Script lo procesa, la respuesta no tiene dónde cargar → sin navegación
+    setTimeout(() => {
+      try { document.body.removeChild(form);   } catch(_) {}
+      try { document.body.removeChild(iframe); } catch(_) {}
+      resolve();
+    }, 800);
+  });
+}
+
 async function syncRecord(record) {
-  const params = new URLSearchParams();
-  params.append('payload', JSON.stringify({ registros: [record.data] }));
   try {
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      body:   params,
-      mode:   'no-cors'
-    });
+    await syncViaForm(JSON.stringify({ registros: [record.data] }));
     record.status   = 'synced';
     record.syncedAt = new Date().toISOString();
   } catch(e) {
