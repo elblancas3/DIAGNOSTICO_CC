@@ -910,6 +910,9 @@ async function syncPending() {
   saveQueue();
   const pending = queue.filter(r => r.status === 'pending');
   if (!pending.length) { showToast('info','✅ Todo ya está sincronizado'); return; }
+  // Toast de diagnóstico — muestra los últimos 20 chars de la URL activa
+  showToast('info', `🔄 URL: ...${APPS_SCRIPT_URL.slice(-20)}`);
+  await new Promise(r => setTimeout(r, 1000));
   showToast('info', `🔄 Enviando ${pending.length} registro${pending.length>1?'s':''}...`);
   for (const r of pending) await syncRecord(r);
   const ok   = queue.filter(r => r.status === 'synced').length;
