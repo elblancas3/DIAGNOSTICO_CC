@@ -578,27 +578,41 @@ function setFiltro(campo, valor, btn) {
     btn.classList.add('active');
   }
   renderTodo();
-  // Zoom al mapa según región seleccionada
-  if (campo === 'region') zoomRegion(valor);
+  zoomFiltro(campo, valor);
 }
 
-const REGION_BOUNDS = {
-  'METROPOLITANOS': [[25.56, -100.50], [25.90, -100.10]],
-  'PERIFERIA':      [[25.55, -100.40], [26.00, -99.90]],
-  'NORTE':          [[26.40, -100.60], [26.60, -100.10]],
-  'SUR':            [[23.30, -100.20], [25.40, -99.90]],
-  'ORIENTE':        [[25.60, -99.70], [26.20, -99.10]],
-  'CITRICOLA':      [[24.80, -100.10], [25.40, -99.50]],
-};
+function zoomFiltro(campo, valor) {
+  if (!valor) { mapa.setView([25.67, -100.31], 8); return; }
 
-function zoomRegion(region) {
-  if (!region) {
-    mapa.setView([25.67, -100.31], 8); // Vista general NL
+  if (campo === 'region') {
+    const bounds = REGION_BOUNDS[valor];
+    if (bounds) mapa.fitBounds(bounds, { padding:[30,30], maxZoom:12 });
     return;
   }
-  const bounds = REGION_BOUNDS[region];
-  if (bounds) {
-    mapa.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
+
+  // Para prioridad y municipio: calcular bounds desde los centros que coinciden
+  let coords = [];
+
+  if (campo === 'municipio') {
+    coords = CENTROS_DATA
+      .filter(cc => cc.municipio === valor)
+      .map(cc => [cc.lat, cc.lng]);
+  }
+
+  if (campo === 'prioridad') {
+    // Centros diagnosticados con esa prioridad
+    const nombres = todosRegistros
+      .filter(r => r.prioridad === valor)
+      .map(r => r.centro_nombre);
+    coords = CENTROS_DATA
+      .filter(cc => nombres.some(n => n && n.includes(cc.nombre.substring(0,15))))
+      .map(cc => [cc.lat, cc.lng]);
+  }
+
+  if (coords.length === 1) {
+    mapa.setView(coords[0], 13);
+  } else if (coords.length > 1) {
+    mapa.fitBounds(L.latLngBounds(coords), { padding:[40,40], maxZoom:13 });
   }
 }
 
