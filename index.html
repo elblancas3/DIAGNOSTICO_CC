@@ -856,15 +856,15 @@ function resetForm(){
   window.scrollTo(0,0);
 }
 
-// ══ SYNC ══
-// ══ SYNC — form POST con iframe oculto ══
-// Único método confirmado que sobrevive el redirect de Apps Script.
-// El iframe se elimina antes de que llegue la respuesta → no abre nada.
+// ══ SYNC — form POST con iframe sandboxed ══
 function syncViaForm(payload) {
   return new Promise(resolve => {
     const id = 'sf' + Date.now();
     const iframe = document.createElement('iframe');
     iframe.name = id;
+    // sandbox: permite recibir el form POST pero bloquea
+    // cualquier intento de navegar la ventana principal
+    iframe.setAttribute('sandbox', 'allow-forms allow-scripts allow-same-origin');
     iframe.style.cssText = 'position:fixed;top:-999px;left:-999px;width:1px;height:1px;opacity:0;pointer-events:none;border:0;';
     document.body.appendChild(iframe);
 
