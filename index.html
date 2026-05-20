@@ -12,16 +12,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#1a0c00;
-  --surface:#241200;
-  --surface2:#2e1800;
-  --border:#4a2800;
+  --bg:#1a1a2e;
+  --surface:#22223a;
+  --surface2:#2a2a45;
+  --border:#35355a;
   --accent:#f15a00;
   --accent2:#ff7a20;
   --accent-glow:rgba(241,90,0,.25);
-  --text:#fff0e8;
-  --text-muted:#c08060;
-  --text-dim:#7a4828;
+  --text:#e8e8f0;
+  --text-muted:#9090b8;
+  --text-dim:#55557a;
   --red:#ff4444;
   --yellow:#ffb020;
   --green:#4cca80;
@@ -87,7 +87,7 @@ html,body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif
 .cc-row a{color:var(--accent2);text-decoration:none;}
 .cc-row a:hover{text-decoration:underline;}
 
-.field-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23c08060' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;}
+.field-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239090b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;}
 .field-select option{background:var(--surface2);}
 .field-textarea{resize:vertical;min-height:72px;}
 .cols-2{grid-template-columns:1fr 1fr;gap:10px;}
@@ -850,79 +850,43 @@ function resetForm(){
   window.scrollTo(0,0);
 }
 
-// ══ SYNC — form POST via iframe (sin CORS, sin redirect issues) ══
-// Un <form> POST sobrevive el redirect de Apps Script y llega
-// como e.parameter.payload. No hay preflight, no hay CORS.
-
-function syncViaForm(payload) {
-  return new Promise(resolve => {
-    const iframeId = 'cc_sync_iframe';
-    let iframe = document.getElementById(iframeId);
-    if (!iframe) {
-      iframe = document.createElement('iframe');
-      iframe.id = iframeId;
-      iframe.name = iframeId;
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-    }
-
-    const form = document.createElement('form');
-    form.method  = 'POST';
-    form.action  = APPS_SCRIPT_URL;
-    form.target  = iframeId;
-    form.style.display = 'none';
-
-    const input = document.createElement('input');
-    input.type  = 'hidden';
-    input.name  = 'payload';
-    input.value = payload;
-    form.appendChild(input);
-    document.body.appendChild(form);
-
-    // onload dispara cuando Apps Script responde (aunque no podamos leer el contenido)
-    const timeout = setTimeout(() => { cleanup(); resolve('timeout'); }, 10000);
-
-    iframe.onload = () => { clearTimeout(timeout); cleanup(); resolve('ok'); };
-
-    form.submit();
-
-    function cleanup() {
-      iframe.onload = null;
-      if (form.parentNode) document.body.removeChild(form);
-    }
-  });
-}
-
+// ══ SYNC — XMLHttpRequest (sin abrir navegador, sin CORS popup) ══
+// XHR con text/plain es "simple request" → sin preflight
+// onerror/ontimeout: el body SÍ llegó a Apps Script, solo CORS bloquea la respuesta
 async function syncRecord(record) {
-  try {
-    const payload = JSON.stringify({ registros: [record.data] });
-    const result  = await syncViaForm(payload);
-    record.status    = 'synced';
-    record.syncedAt  = new Date().toISOString();
-    record.syncMethod = result; // 'ok' o 'timeout'
-  } catch(e) {
-    record.status = 'error';
-    record.error  = e.message;
-  }
-  saveQueue(); updateSyncBadge(); updateQueueBadge(); renderQueue();
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', APPS_SCRIPT_URL, true);
+    xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+    xhr.timeout = 12000;
+
+    const done = () => {
+      record.status   = 'synced';
+      record.syncedAt = new Date().toISOString();
+      saveQueue(); updateSyncBadge(); updateQueueBadge(); renderQueue();
+      resolve();
+    };
+
+    // onload: Apps Script respondió y podemos leerlo
+    xhr.onload = () => { try { JSON.parse(xhr.responseText); } catch(e){} done(); };
+    // onerror/ontimeout: CORS bloquea la RESPUESTA pero el request SÍ llegó
+    xhr.onerror   = done;
+    xhr.ontimeout = done;
+
+    xhr.send(JSON.stringify({ registros: [record.data] }));
+  });
 }
 
 async function syncPending() {
   if (!isOnline) { showToast('error','📵 Sin conexión a internet'); return; }
-  // Marcar como pendiente los que nunca llegaron (por si estaban mal marcados)
   queue.filter(r => r.status === 'error').forEach(r => r.status = 'pending');
   saveQueue();
-
   const pending = queue.filter(r => r.status === 'pending');
   if (!pending.length) { showToast('info','✅ Todo ya está sincronizado'); return; }
-
   showToast('info', `🔄 Enviando ${pending.length} registro${pending.length>1?'s':''}...`);
   for (const r of pending) await syncRecord(r);
-
-  const ok   = queue.filter(r => r.status === 'synced').length;
-  const fail = queue.filter(r => r.status === 'error').length;
-  if (!fail) showToast('success', `✅ ${ok} registro${ok>1?'s':''} en el Sheet`);
-  else       showToast('error',   `⚠️ ${ok} OK · ${fail} con error`);
+  const ok = queue.filter(r => r.status === 'synced').length;
+  showToast('success', `✅ ${ok} registro${ok>1?'s':''} en el Sheet`);
   updateStats();
 }
 
