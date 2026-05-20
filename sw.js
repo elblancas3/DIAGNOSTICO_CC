@@ -1,5 +1,5 @@
 // CC Diagnóstico NL — Service Worker
-const CACHE = 'cc-diagnostico-v3';
+const CACHE = 'cc-diagnostico-v4';
 const SCOPE = '/DIAGNOSTICO_CC/';
 
 // Archivos a cachear para uso offline
