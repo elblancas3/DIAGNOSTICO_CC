@@ -862,9 +862,9 @@ function syncViaForm(payload) {
     const id = 'sf' + Date.now();
     const iframe = document.createElement('iframe');
     iframe.name = id;
-    // sandbox: permite recibir el form POST pero bloquea
-    // cualquier intento de navegar la ventana principal
-    iframe.setAttribute('sandbox', 'allow-forms allow-scripts allow-same-origin');
+    // allow-forms: permite recibir el POST
+    // SIN allow-top-navigation: el iframe NO puede navegar la ventana principal
+    iframe.setAttribute('sandbox', 'allow-forms allow-same-origin');
     iframe.style.cssText = 'position:fixed;top:-999px;left:-999px;width:1px;height:1px;opacity:0;pointer-events:none;border:0;';
     document.body.appendChild(iframe);
 
